@@ -1,12 +1,12 @@
 #XXXXXXX This is a prototype!!!  It will change in the future!!! XXXXX#
 name:         Unix-PID
-version:      v0.0.1
+version:      v0.0.2
 version_from: PID.pm
 installdirs:  site
 requires:
     version:                       0
-    Class::Std:                    0
     Class::Std::Utils:             0
+    Class::Std:                    0
 
 distribution_type: module
 generated_by: ExtUtils::MakeMaker version 6.12

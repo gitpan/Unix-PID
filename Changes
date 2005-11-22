@@ -1,6 +1,9 @@
 Revision history for Perl extension Unix::PID.
 
-0.01  Thu Nov 17 11:27:19 2005
+0.0.1  Thu Nov 17 11:27:19 2005
 	- original version; created by h2xs 1.22 with options
 		-AXc -n Unix::PID
 
+0.0.2  Fri Nov 18 21:33:14 2005
+	- fixed up POD a bit
+	- added wait_for_pidsof()
