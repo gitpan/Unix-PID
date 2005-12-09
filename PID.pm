@@ -2,7 +2,7 @@ package Unix::PID;
 
 use strict;
 use warnings;
-use version;our $VERSION = qv('0.0.2');
+use version;our $VERSION = qv('0.0.3');
 
 use IPC::Open3;
 use Class::Std;
@@ -38,6 +38,24 @@ use Class::Std::Utils;
                           : grep { $map{$_} =~ m/\Q$name\E/  } keys %map;
 
         return wantarray ? @pids : $pids[0];
+    }
+
+    sub is_running {
+        my($self, $check_this, $exact) = @_;
+        return $self->is_pid_running($check_this) if $check_this =~ m/^d+$/;
+        return $self->is_command_running($check_this, $exact);
+    }
+
+    sub is_pid_running {
+        my($self, $check_pid) = @_;
+        my %pids;
+        @pids{ $self->get_pidof( $self->get_command($check_pid) ) } = ();
+        return exists $pids{ $check_pid } ? 1 : 0;
+    }
+
+    sub is_command_running {
+        my($self, $check_command, $exact) = @_;
+        return scalar $self->get_pidof($check_command, $exact) ? 1 : 0;
     }
 
     sub wait_for_pidsof {
@@ -165,6 +183,28 @@ To see in script.pl how many others of itself are running under force:
    $pids->get_pidof('script.pl --force');
 
 The current script's PID (IE $$) is never included in this output.
+
+=head2 $pid->is_*running
+
+Check if a pid or command is running or not, returns 1 or 0
+
+=head3 $pid->is_running()
+
+If the first argument is all digits then this it calls $pid->is_pid_running for you. Otherwise it calls $pid->is_command_running() for you.
+
+=head3 $pid->is_pid_running()
+
+    if($pid->is_pid_running($miscpid)) {
+        warn "PID $miscpid is running, you had better go catch it";
+    } 
+
+=head3 $pid->is_command_running()
+
+    if($pid->is_comand_running($cmd)) {
+        warn "$cmd is still goign strong";
+    }
+
+If the second argument is true it acts just like get_pidof()
 
 =head2 $pid->wait_for_pidsof()
 
