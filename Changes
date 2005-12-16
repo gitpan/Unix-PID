@@ -10,3 +10,6 @@ Revision history for Perl extension Unix::PID.
 
 0.0.3  Fri Dec  9 17:30:07 2005
 	- added is_*running methods
+
+0.0.4  Thu Dec 15 23:51:24 2005 
+	- added pid_file()

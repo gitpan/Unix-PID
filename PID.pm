@@ -2,7 +2,7 @@ package Unix::PID;
 
 use strict;
 use warnings;
-use version;our $VERSION = qv('0.0.3');
+use version;our $VERSION = qv('0.0.4');
 
 use IPC::Open3;
 use Class::Std;
@@ -38,6 +38,27 @@ use Class::Std::Utils;
                           : grep { $map{$_} =~ m/\Q$name\E/  } keys %map;
 
         return wantarray ? @pids : $pids[0];
+    }
+
+    sub pid_file {
+        my($self, $pid_file, $newpid) = @_;
+        $newpid = $$ if !$newpid;
+       
+        eval 'END { unlink $pid_file; }';
+
+        if(-e $pid_file) {
+            open my $oldpid_fh, '<', $pid_file or return 0;
+            chomp(my $curpid = <$oldpid_fh>);
+            close $oldpid_fh;
+
+            return if $self->is_pid_running(int $curpid); 
+        }
+
+        open my $pid_fh, '>', $pid_file or return 0;
+        print {$pid_fh} int $newpid;
+        close $pid_fh;
+
+        return 1;
     }
 
     sub is_running {
@@ -205,6 +226,19 @@ If the first argument is all digits then this it calls $pid->is_pid_running for 
     }
 
 If the second argument is true it acts just like get_pidof()
+
+=head2 $pid->pid_file()
+
+Takes two arguments, the first is the pid file, the second, optional, argument is the pid to write to the file: defaults to $$.
+
+If the pidfile exists it checks to see if the pid in it is running and if so it returns undef, if not it writes the second argument (or $$) to the file and returns 1.
+
+It returns 0 if the pid file read or write open() fails. (IE you could use $! in your "or whatever")
+
+    # make sure this only runs one at a time 
+    Unix::PID->new()->pid_file('/var/run/this.pid') or die 'This is already running';
+
+Also sets up and END block to remove file.
 
 =head2 $pid->wait_for_pidsof()
 
