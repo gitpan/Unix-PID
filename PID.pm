@@ -2,11 +2,32 @@ package Unix::PID;
 
 use strict;
 use warnings;
-use version;our $VERSION = qv('0.0.4');
+use version;our $VERSION = qv('0.0.5');
 
 use IPC::Open3;
 use Class::Std;
 use Class::Std::Utils;
+
+sub import {
+    shift;
+    my $file = defined $_[0] && $_[0] !~ m{^\d+\.\d+\.\d+$} ? shift : '';
+
+    #### handle use Mod '1.2.3'; here? make it play nice with version.pm ?? ##
+    #    my $want = shift;
+    #
+    #    if(defined $want && $want !~ m{^\d+\.\d+\.\d+$}) {
+    #        require Carp;
+    #        Carp::croak "Unix::PID is version $VERSION, you requested $want"
+    #            if Unix::PID->VERSION < version->new($want)->numify();
+    #    } 
+    #### ???? ##
+
+    if(defined $file && $file ne '') {
+        require Carp;
+        Unix::PID->new()->pid_file($file) 
+            or Carp::croak "The PID in $file is still running.";
+    }
+}
 
 {
     
@@ -44,15 +65,16 @@ use Class::Std::Utils;
         my($self, $pid_file, $newpid) = @_;
         $newpid = $$ if !$newpid;
        
-        eval 'END { unlink $pid_file; }';
-
         if(-e $pid_file) {
             open my $oldpid_fh, '<', $pid_file or return 0;
             chomp(my $curpid = <$oldpid_fh>);
             close $oldpid_fh;
-
+            return 1 if int $curpid == $$ && $newpid == $$; # already setup
+            return if   int $curpid == $$; # can't change it while $$ is alive
             return if $self->is_pid_running(int $curpid); 
         }
+        
+        eval 'END { unlink $pid_file; }';
 
         open my $pid_fh, '>', $pid_file or return 0;
         print {$pid_fh} int $newpid;
@@ -165,6 +187,17 @@ Unix::PID - Perl extension for getting PID info.
 or specify where ps is at:
 
    my $pid = Unix::PID->new({ 'ps_path' => '/usr/util/bin' });
+
+or simplify pid file use by:
+
+   use Unix::PID '/var/run/this.pid';
+
+This is *exactly* the same as:
+
+   use Unix::PID;
+   Unix::PID->new()->pid_file('/var/run/this.pid') or die 'The PID in /var/run/this.pid is still running.';
+
+So the "use Unix::PID $pidfile" will simply 99% of the times you'd use $pid->pid_file();
 
 =head1 METHODS
 
