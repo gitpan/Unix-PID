@@ -2,7 +2,7 @@ package Unix::PID;
 
 use strict;
 use warnings;
-use version;our $VERSION = qv('0.0.5');
+use version;our $VERSION = qv('0.0.6');
 
 use IPC::Open3;
 use Class::Std;
@@ -197,7 +197,7 @@ This is *exactly* the same as:
    use Unix::PID;
    Unix::PID->new()->pid_file('/var/run/this.pid') or die 'The PID in /var/run/this.pid is still running.';
 
-So the "use Unix::PID $pidfile" will simply 99% of the times you'd use $pid->pid_file();
+So the "use Unix::PID 'pidfile';" will simplify 99% of the times you'd use $pid->pid_file();
 
 =head1 METHODS
 

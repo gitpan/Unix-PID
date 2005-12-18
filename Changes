@@ -17,3 +17,6 @@ Revision history for Perl extension Unix::PID.
 0.0.5  Sat Dec 17 14:00:10 2005
         - added "use Unix::PID 'pid_file';" funtionality
         - fixed up pid_file() to work with multipe pid_file calls to the same file using $$ and !$$ pids
+
+0.0.6  Sun Dec 18 07:57:13 2005
+	- minor POD fix
