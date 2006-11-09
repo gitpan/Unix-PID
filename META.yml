@@ -1,12 +1,13 @@
+# http://module-build.sourceforge.net/META-spec.html
 #XXXXXXX This is a prototype!!!  It will change in the future!!! XXXXX#
 name:         Unix-PID
-version:      v0.0.6
+version:      v0.0.7
 version_from: PID.pm
 installdirs:  site
 requires:
-    version:                       0
-    Class::Std::Utils:             0
     Class::Std:                    0
+    Class::Std::Utils:             0
+    version:                       0
 
 distribution_type: module
-generated_by: ExtUtils::MakeMaker version 6.12
+generated_by: ExtUtils::MakeMaker version 6.17

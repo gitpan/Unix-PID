@@ -2,7 +2,7 @@ package Unix::PID;
 
 use strict;
 use warnings;
-use version;our $VERSION = qv('0.0.6');
+use version;our $VERSION = qv('0.0.7');
 
 use IPC::Open3;
 use Class::Std;
@@ -61,7 +61,24 @@ sub import {
         return wantarray ? @pids : $pids[0];
     }
 
+    sub kill {
+        my($self, $pid) = @_;
+        $pid = int $pid;
+        if(kill 0, $pid) {
+            if(!kill 1, $pid) {
+                kill 9, $pid or return;
+            }
+        }   
+        return 1; 
+    }
+    
     sub pid_file {
+        my($self, $pid_file, $newpid) = @_;
+        eval 'END { unlink $pid_file; }';
+        return $self->pid_file_no_unlink($pid_file, $newpid);
+    }
+    
+    sub pid_file_no_unlink {
         my($self, $pid_file, $newpid) = @_;
         $newpid = $$ if !$newpid;
        
@@ -74,8 +91,6 @@ sub import {
             return if $self->is_pid_running(int $curpid); 
         }
         
-        eval 'END { unlink $pid_file; }';
-
         open my $pid_fh, '>', $pid_file or return 0;
         print {$pid_fh} int $newpid;
         close $pid_fh;
@@ -272,6 +287,18 @@ It returns 0 if the pid file read or write open() fails. (IE you could use $! in
     Unix::PID->new()->pid_file('/var/run/this.pid') or die 'This is already running';
 
 Also sets up and END block to remove file.
+
+=head2 $pid->pid_file_no_unlink()
+
+Just like $pid->pid_file() except no END block cleanup is setup. Useful for doding pid files for a sporking daemon.
+
+=head2 $pid->kill()
+
+Takes one argument, the PID to kill. If its running it first tries kill 1 and if that fails it tries kill 9.
+
+Returns undef if the PID was running and could not be killed, true if its not running or was killed successfully.
+
+    $pid->kill( $mypid ) or warn "Could not kill PID $mypid: $!";
 
 =head2 $pid->wait_for_pidsof()
 
