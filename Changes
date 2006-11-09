@@ -23,3 +23,6 @@ Revision history for Perl extension Unix::PID.
 	
 0.0.7  Thu Nov  9 10:44:38 2006
     - added kill() and pid_file_no_unlink()
+
+0.0.8  Thu Nov  9 14:31:42 2006
+	- added kill_pid_file() and kill_pid_file_no_unlink()

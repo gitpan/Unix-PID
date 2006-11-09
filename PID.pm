@@ -2,7 +2,7 @@ package Unix::PID;
 
 use strict;
 use warnings;
-use version;our $VERSION = qv('0.0.7');
+use version;our $VERSION = qv('0.0.8');
 
 use IPC::Open3;
 use Class::Std;
@@ -98,6 +98,27 @@ sub import {
         return 1;
     }
 
+    sub kill_pid_file {
+        my($self, $pidfile) = @_;
+        my $rc = $self->kill_pid_file_no_unlink();
+        if($rc) {
+            unlink $pidfile or return -1;
+        }
+        return $rc;
+    }
+    
+    sub kill_pid_file_no_unlink {
+        my($self, $pidfile) = @_;
+                
+        if(-e $pidfile) {
+            open my $pid_fh, '<', $pidfile or return 0;
+            chomp(my $pid = <$pid_fh>);
+            close $pid_fh;
+            $self->kill($pid) or return;
+        }
+        return 1;
+    }
+    
     sub is_running {
         my($self, $check_this, $exact) = @_;
         return $self->is_pid_running($check_this) if $check_this =~ m/^d+$/;
@@ -290,7 +311,17 @@ Also sets up and END block to remove file.
 
 =head2 $pid->pid_file_no_unlink()
 
-Just like $pid->pid_file() except no END block cleanup is setup. Useful for doding pid files for a sporking daemon.
+Just like $pid->pid_file() except no END block cleanup is setup. Useful for doing pid files for a sporking daemon.
+
+=head2 $pid->kill_pid_file()
+
+Takes one argument, the pidfile whose PID you want kill()ed. It unlinks the pidfile after its successful run.
+
+It returns true if all is well, 0 if it exists but could not be opened, undef if the pid could not be killed, and -1 if it could not be cleaned up after it was successfully killed.
+
+=head2 $pid->kill_pid_file_no_unlink();
+
+Just like $pid->kill_pid_file() but the pid file is not unlink()ed. (and it likewise does not return -1)
 
 =head2 $pid->kill()
 
