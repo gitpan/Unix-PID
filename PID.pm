@@ -2,7 +2,7 @@ package Unix::PID;
 
 use strict;
 use warnings;
-use version;our $VERSION = qv('0.0.9');
+use version;our $VERSION = qv('0.0.10');
 
 use IPC::Open3;
 use Class::Std;
@@ -101,7 +101,7 @@ sub import {
     sub kill_pid_file {
         my($self, $pidfile) = @_;
         my $rc = $self->kill_pid_file_no_unlink($pidfile);
-        if($rc) {
+        if($rc && -e $pidfile) {
             unlink $pidfile or return -1;
         }
         return $rc;
