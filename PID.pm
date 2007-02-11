@@ -2,7 +2,7 @@ package Unix::PID;
 
 use strict;
 use warnings;
-use version;our $VERSION = qv('0.0.10');
+use version;our $VERSION = qv('0.0.11');
 
 use IPC::Open3;
 use Class::Std;
@@ -34,6 +34,11 @@ sub import {
     my %ps_path :ATTR('get' => 'ps_path', 'init_arg' => 'ps_path', 'default' => '');
     my %errstr  :ATTR('get' => 'errstr'); 
 
+    sub non_blocking_wait {
+        my($self) = @_;
+        while( (my $zombie = waitpid(-1, 1)) > 0 ) {}    
+    }
+    
     sub set_ps_path {
         my($self, $path) = @_;
         $path = substr($path, 0, (length($path) - 1)) 
@@ -140,10 +145,7 @@ sub import {
     sub wait_for_pidsof {
         my ($self, $wait_ref) = @_;
 
-        $wait_ref->{'get_pidof'} = $self->get_command($$) 
-            if !$wait_ref->{'get_pidof'};
-        $wait_ref->{'sleep_for'} = 60 if !defined $wait_ref->{'sleep_for'} 
-                                   || $wait_ref->{'sleep_for'} !~ m/^\d+$/;
+        $wait_ref->{'get_pidof'} = $self->get_command($$) if !$wait_ref->{'get_pidof'}; 
         $wait_ref->{'max_loops'} = 5  if !defined $wait_ref->{'max_loops'}
                                    || $wait_ref->{'max_loops'} !~ m/^\d+$/;
 
@@ -151,20 +153,68 @@ sub import {
             die 'Hit max loops in wait_for_pidsof()';            
         } if ref $wait_ref->{'hit_max_loops'} ne 'CODE';
  
-        my @got_pids = $self->get_pidof( $wait_ref->{'get_pidof'} );
+        my @got_pids;
+        if( ref $wait_ref->{'pid_list'} eq 'ARRAY' ) {
+            @got_pids = grep { defined } map { $self->is_pid_running($_) ? $_ : undef } @{ $wait_ref->{'pid_list'} };    
+        }
+        else {
+            @got_pids = $self->get_pidof( $wait_ref->{'get_pidof'} );
+        }
+
+        if( $wait_ref->{'use_hires_usleep'} || $wait_ref->{'use_hires_nanosleep'} ) {
+            require Time::HiRes;
+        }
+        
+        my $lcy = '';
+        my $fib = '';
+        if( ref $wait_ref->{'sleep_for'} ) {
+            if( ref $wait_ref->{'sleep_for'} eq 'ARRAY' ) {
+                require List::Cycle;
+                $lcy = List::Cycle->new({ 'values' => $wait_ref->{'sleep_for'} });
+            }
+            if( $wait_ref->{'sleep_for'} eq 'HASH' ) {
+                if( exists $wait_ref->{'sleep_for'}->{'fibonacci'} ) {
+                    require Math::Fibonacci::Phi;
+                    $fib = 1;
+                }
+            }
+        }
+        $wait_ref->{'sleep_for'} = 60 if !defined $wait_ref->{'sleep_for'};
+                
         my $loop_cnt = 0;
        
         while(scalar @got_pids) {
             $loop_cnt++;
 
-            $wait_ref->{'pre_sleep'}->($loop_cnt, \@got_pids) 
+            $wait_ref->{'pre_sleep'}->( $loop_cnt, \@got_pids ) 
                 if ref $wait_ref->{'pre_sleep'} eq 'CODE';
 
-            sleep $wait_ref->{'sleep_for'};
-            @got_pids = $self->get_pidof( $wait_ref->{'get_pidof'} );
- 
-            $wait_ref->{'hit_max_loops'}->($loop_cnt, \@got_pids)
-                if $loop_cnt >= $wait_ref->{'max_loops'};
+            my $period = $lcy   ? $lcy->next()
+                         : $fib ? Math::Fibonacci::term( $loop_cnt )
+                         :        $wait_ref->{'sleep_for'}
+                         ; 
+            
+            if( $wait_ref->{'use_hires_nanosleep'} ) {
+                Time::HiRes::nanosleep( $period );                
+            }
+            elsif( $wait_ref->{'use_hires_usleep'} ) {
+                Time::HiRes::usleep( $period );
+            } 
+            else {
+                sleep $period;
+            }
+            
+            if( ref $wait_ref->{'pid_list'} eq 'ARRAY' ) {
+                @got_pids = grep { defined } map { $self->is_pid_running($_) ? $_ : undef } @{ $wait_ref->{'pid_list'} };    
+            }
+            else {
+                @got_pids = $self->get_pidof( $wait_ref->{'get_pidof'} );
+            }
+            
+            if( $loop_cnt >= $wait_ref->{'max_loops'} ) {
+                $wait_ref->{'hit_max_loops'}->( $loop_cnt, \@got_pids );
+                last;
+            }
         }
     }
 
@@ -185,6 +235,7 @@ sub import {
         }
 
         my $ps = $path ? "$path/ps" : 'ps';
+        local $SIG{'CHLD'} = 'IGNORE';
         my $pid = open3(my $in_fh, my $out_fh, my $err_fh, $ps, @ps_args);
         my @out = <$out_fh>;
         $errstr{ ident $self } = join '', <$err_fh> if defined $err_fh; 
@@ -331,6 +382,10 @@ Returns undef if the PID was running and could not be killed, true if its not ru
 
     $pid->kill( $mypid ) or warn "Could not kill PID $mypid: $!";
 
+=head2 $pid->non_blocking_wait()
+
+Does a non-blocking wait for all pending zombie processes
+
 =head2 $pid->wait_for_pidsof()
 
 This function waits for processes matching your criteria to finish before going on.
@@ -339,13 +394,37 @@ Its single argument is a hash ref whose keys are the following:
 
 =over
 
+=item pid_list
+
+An array ref of numeric PIDs to wait on. If this exists and is an array ref it will be used instead of get_pidof
+
 =item get_pidof
 
 The value is the same as you'd pass to $pid->get_pidof, defaults to $pid->get_command($$) to wait for process that have the exact same command to stop.
 
 =item sleep_for
 
-number of seconds to sleep between checking on the pids. defaults to 60
+Number of seconds to sleep between checking on the pids. defaults to 60
+
+If an array ref is passed the sleep time cycles through this list.
+
+If a hashref is sent, and it has a key of the value 'fibonacci' each cycle uses the next fibonnaci number as the time to sleep, starting with the first.
+
+See L<Math::Fibonacci::Phi>
+
+=item use_hires_usleep
+
+If true Time::HiRes::usleep() is used instead of sleep() so that you can have it sleep (via "sleep_for") for fractions of seconds in microseconds.
+
+See L<Time::HiRes>
+
+=item use_hires_nanosleep
+
+If true Time::HiRes::nanosleep() is used instead of sleep() so that you can have it sleep (via "sleep_for") for fractions of seconds in nanoseconds.
+
+See L<Time::HiRes>
+
+If both use_hires_nanosleep and use_hires_usleep are true use_hires_nanosleep is used.
 
 =item max_loops
 

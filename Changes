@@ -32,3 +32,9 @@ Revision history for Perl extension Unix::PID.
 	
 0.0.10  Mon Nov 13 17:28:21 2006
     - added -e $pidfile when $rc was good before unlink to avoid spurious -1
+
+0.0.11 Sat Feb 10 22:30:11 2007
+	- added pid_list key to wait_for_pidsof() 
+	- added HiRes support, array ref support, and Fibonacci support to wait_for_pidsof()'s 'sleep_for'
+	- added a localized ignore of SIG CHLD before open3() call
+	- added non_blocking_wait()

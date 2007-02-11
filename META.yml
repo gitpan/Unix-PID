@@ -1,12 +1,15 @@
 # http://module-build.sourceforge.net/META-spec.html
 #XXXXXXX This is a prototype!!!  It will change in the future!!! XXXXX#
 name:         Unix-PID
-version:      v0.0.10
+version:      v0.0.11
 version_from: PID.pm
 installdirs:  site
 requires:
     Class::Std:                    0
     Class::Std::Utils:             0
+    List::Cycle:                   0
+    Math::Fibonacci::Phi:          0
+    Time::HiRes:                   0
     version:                       0
 
 distribution_type: module
