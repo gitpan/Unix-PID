@@ -2,7 +2,7 @@ package Unix::PID;
 
 use strict;
 use warnings;
-use version;our $VERSION = qv('0.0.11');
+use version;our $VERSION = qv('0.0.12');
 
 use IPC::Open3;
 use Class::Std;
@@ -10,7 +10,7 @@ use Class::Std::Utils;
 
 sub import {
     shift;
-    my $file = defined $_[0] && $_[0] !~ m{^\d+\.\d+\.\d+$} ? shift : '';
+    my $file = defined $_[0] && $_[0] !~ m{ \A \d+ \. \d+ \. \d+ \z }xms ? shift : '';
 
     #### handle use Mod '1.2.3'; here? make it play nice with version.pm ?? ##
     #    my $want = shift;
@@ -38,7 +38,7 @@ sub import {
         my($self) = @_;
         while( (my $zombie = waitpid(-1, 1)) > 0 ) {}    
     }
-    
+
     sub set_ps_path {
         my($self, $path) = @_;
         $path = substr($path, 0, (length($path) - 1)) 
@@ -57,7 +57,7 @@ sub import {
         my %map;
         for( $self->_raw_ps('axo', 'pid,command') ) {
             $_ =~ s{ \A \s* | \s* \z }{}xmsg;
-            my($pid, $cmd) = $_ =~ m{ \A (\d+)\s+(.*) \z }xmsg;
+            my($pid, $cmd) = $_ =~ m{ \A (\d+) \s+ (.*) \z }xmsg;
             $map{ $pid } = $cmd if $pid && $pid ne $$ && $cmd;
         }
         my @pids = $exact ? grep { $map{$_} =~ m/^\Q$name\E$/  } keys %map 
@@ -76,13 +76,13 @@ sub import {
         }   
         return 1; 
     }
-    
+
     sub pid_file {
         my($self, $pid_file, $newpid) = @_;
         eval 'END { unlink $pid_file; }';
         return $self->pid_file_no_unlink($pid_file, $newpid);
     }
-    
+
     sub pid_file_no_unlink {
         my($self, $pid_file, $newpid) = @_;
         $newpid = $$ if !$newpid;
@@ -111,7 +111,7 @@ sub import {
         }
         return $rc;
     }
-    
+
     sub kill_pid_file_no_unlink {
         my($self, $pidfile) = @_;
         if(-e $pidfile) {
@@ -123,18 +123,38 @@ sub import {
         }
         return 1;
     }
-    
+
     sub is_running {
         my($self, $check_this, $exact) = @_;
-        return $self->is_pid_running($check_this) if $check_this =~ m/^d+$/;
+        return $self->is_pid_running($check_this) if $check_this =~ m{ \A d+ \z }xms;
         return $self->is_command_running($check_this, $exact);
+    }
+
+    sub pid_info {
+	    my ($self, $pid) = @_;
+	    my @outp = $self->_pid_info_raw( $pid );
+	    return wantarray ? split(/\s+/, $outp[1], 11) : [ split(/\s+/, $outp[1], 11) ];    
+    }
+
+    sub pid_info_hash {
+	    my ($self, $pid) = @_;
+	    my @outp = $self->_pid_info_raw( $pid );
+	    my %info;
+	    @info{ split(/\s+/, $outp[0], 11) } = split(/\s+/, $outp[1], 11);
+	    return wantarray ? %info : \%info;
+    }
+
+    sub _pid_info_raw {
+	    my ($self, $pid) = @_;
+	    my @info = $self->_raw_ps('u', '-p', $pid);
+	    chomp @info;
+	    return wantarray ? @info : \@info;
     }
 
     sub is_pid_running {
         my($self, $check_pid) = @_;
-        my %pids;
-        @pids{ $self->get_pidof( $self->get_command($check_pid) ) } = ();
-        return exists $pids{ $check_pid } ? 1 : 0;
+        my $info = ( $self->pid_info_raw($check_pid) )[1];
+        return defined $info ? 1 : 0;
     }
 
     sub is_command_running {
@@ -147,7 +167,7 @@ sub import {
 
         $wait_ref->{'get_pidof'} = $self->get_command($$) if !$wait_ref->{'get_pidof'}; 
         $wait_ref->{'max_loops'} = 5  if !defined $wait_ref->{'max_loops'}
-                                   || $wait_ref->{'max_loops'} !~ m/^\d+$/;
+                                   || $wait_ref->{'max_loops'} !~ m{ \A \d+ \z }xms;
 
         $wait_ref->{'hit_max_loops'} = sub {
             die 'Hit max loops in wait_for_pidsof()';            
@@ -324,6 +344,18 @@ To see in script.pl how many others of itself are running under force:
    $pids->get_pidof('script.pl --force');
 
 The current script's PID (IE $$) is never included in this output.
+
+=head2 $pid->pid_info( $pid )
+
+Get an array (or array ref in scalar context ) of $pid's USER, PID, %CPU, %MEM, VSZ, RSS, TT, STAT, STARTED, TIME, COMMAND
+
+This may vary on your system so check the header of 'ps u -p NUMERIC_PID_HERE' on your system.
+
+=head2 $pid->pid_info_hash()
+
+Same info as pid_info except you get a hash (or hashref in scalar context) with the keys: USER, PID, %CPU, %MEM, VSZ, RSS, TT, STAT, STARTED, TIME, COMMAND and values that correspond to each one.
+
+This may vary on your system so check the header of 'ps u -p NUMERIC_PID_HERE' on your system.
 
 =head2 $pid->is_*running
 

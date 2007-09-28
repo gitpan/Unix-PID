@@ -38,3 +38,8 @@ Revision history for Perl extension Unix::PID.
 	- added HiRes support, array ref support, and Fibonacci support to wait_for_pidsof()'s 'sleep_for'
 	- added a localized ignore of SIG CHLD before open3() call
 	- added non_blocking_wait()
+	
+0.0.12 Fri Sep 28 16:15:11 2007
+	- added pid_info*() ( seems sooo obvious now... )
+	- improve is_pid_running() by having it now use pid_info*()
+	- xms'd a few regex's
