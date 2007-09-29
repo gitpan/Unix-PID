@@ -2,7 +2,7 @@ package Unix::PID;
 
 use strict;
 use warnings;
-use version;our $VERSION = qv('0.0.12');
+use version;our $VERSION = qv('0.0.13');
 
 use IPC::Open3;
 use Class::Std;
@@ -153,8 +153,9 @@ sub import {
 
     sub is_pid_running {
         my($self, $check_pid) = @_;
-        my $info = ( $self->pid_info_raw($check_pid) )[1];
-        return defined $info ? 1 : 0;
+        my $info = ($self->_pid_info_raw($check_pid) )[1];
+        return 1 if defined $info;
+        return;
     }
 
     sub is_command_running {

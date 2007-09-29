@@ -43,3 +43,6 @@ Revision history for Perl extension Unix::PID.
 	- added pid_info*() ( seems sooo obvious now... )
 	- improve is_pid_running() by having it now use pid_info*()
 	- xms'd a few regex's
+	
+0.0.13 Fri Sep 28 19:29:23 2007
+	- spiffed up is_pid_running() return value and call from 0.0.12
