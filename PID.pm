@@ -2,7 +2,7 @@ package Unix::PID;
 
 use strict;
 use warnings;
-use version;our $VERSION = qv('0.0.13');
+use version;our $VERSION = qv('0.0.14');
 
 use IPC::Open3;
 use Class::Std;
@@ -69,10 +69,15 @@ sub import {
     sub kill {
         my($self, $pid) = @_;
         $pid = int $pid;
-        if(kill 0, $pid) {
-            if(!kill 1, $pid) {
-                kill 9, $pid or return;
-            }
+        # kill 0, $pid : may be false but still running, see `perldoc -f kill`
+        if( $self->is_pid_running($pid) ) {
+            # RC from kill is not a boolean of if the PID was killed or not, only that it was signaled
+            # so it is not an indicator of "success" in kiling $pid
+            kill(15, $pid); # TERM
+            kill(2, $pid);  # INT
+            kill(1, $pid);  # HUP
+            kill(9, $pid);  # KILL
+            return $self->is_pid_running($pid);
         }   
         return 1; 
     }

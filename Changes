@@ -46,3 +46,6 @@ Revision history for Perl extension Unix::PID.
 	
 0.0.13 Fri Sep 28 19:29:23 2007
 	- spiffed up is_pid_running() return value and call from 0.0.12
+	
+0.0.14 Thu Apr 10 18:09:35 2008
+    - make kill() more portable
