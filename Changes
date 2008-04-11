@@ -49,3 +49,6 @@ Revision history for Perl extension Unix::PID.
 	
 0.0.14 Thu Apr 10 18:09:35 2008
     - make kill() more portable
+    
+0.0.15 Fri Apr 11 10:59:55 2008
+    - fixed 0.4 reverse logic on kill() return
