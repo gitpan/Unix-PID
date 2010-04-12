@@ -36,7 +36,7 @@ Revision history for Perl extension Unix::PID.
 0.0.11 Sat Feb 10 22:30:11 2007
 	- added pid_list key to wait_for_pidsof() 
 	- added HiRes support, array ref support, and Fibonacci support to wait_for_pidsof()'s 'sleep_for'
-	- added a localized ignore of SIG CHLD before open3() call
+	- added a local()ized ignore of SIG CHLD before open3() call
 	- added non_blocking_wait()
 	
 0.0.12 Fri Sep 28 16:15:11 2007
@@ -52,3 +52,10 @@ Revision history for Perl extension Unix::PID.
     
 0.0.15 Fri Apr 11 10:59:55 2008
     - fixed 0.4 reverse logic on kill() return
+
+0.16  Fri Apr  09 08:37:26 CDT 2010
+    - changed version number to simple decimal
+    - make pid file setup more robust
+    - remove Class::Std dependency
+    - perltidy
+    - added missing waitpid() after open3()

@@ -2,11 +2,10 @@ package Unix::PID;
 
 use strict;
 use warnings;
-use version;our $VERSION = qv('0.0.15');
+our $VERSION = '0.16';
+our $AUTOLOAD;
 
 use IPC::Open3;
-use Class::Std;
-use Class::Std::Utils;
 
 sub import {
     shift;
@@ -19,270 +18,334 @@ sub import {
     #        require Carp;
     #        Carp::croak "Unix::PID is version $VERSION, you requested $want"
     #            if Unix::PID->VERSION < version->new($want)->numify();
-    #    } 
+    #    }
     #### ???? ##
 
-    if(defined $file && $file ne '') {
+    if ( defined $file && $file ne '' ) {
         require Carp;
-        Unix::PID->new()->pid_file($file) 
-            or Carp::croak "The PID in $file is still running.";
+        Unix::PID->new()->pid_file($file)
+          or Carp::croak "The PID in $file is still running.";
     }
 }
 
-{
-    
-    my %ps_path :ATTR('get' => 'ps_path', 'init_arg' => 'ps_path', 'default' => '');
-    my %errstr  :ATTR('get' => 'errstr'); 
+sub new {
+    my ( $class, $args_ref ) = @_;
+    $args_ref = {} if ref($args_ref) ne 'HASH';
+    my $self = bless(
+        {
+            'ps_path' => '',
+            'errstr'  => '',
+        },
+        $class
+    );
 
-    sub non_blocking_wait {
-        my($self) = @_;
-        while( (my $zombie = waitpid(-1, 1)) > 0 ) {}    
-    }
+    $self->set_ps_path( $args_ref->{'ps_path'} ) if exists $args_ref->{'ps_path'};
 
-    sub set_ps_path {
-        my($self, $path) = @_;
-        $path = substr($path, 0, (length($path) - 1)) 
-            if substr($path, -1, 1) eq '/';
-        if( (-d $path && -x "$path/ps") || $path eq '') {
-            $ps_path{ ident $self } = $path;
-            return 1;
-        }       
-        else {
-            return;
-        }
-    }
+    return $self;
+}
 
-    sub get_pidof {
-        my($self, $name, $exact) = @_;
-        my %map;
-        for( $self->_raw_ps('axo', 'pid,command') ) {
-            $_ =~ s{ \A \s* | \s* \z }{}xmsg;
-            my($pid, $cmd) = $_ =~ m{ \A (\d+) \s+ (.*) \z }xmsg;
-            $map{ $pid } = $cmd if $pid && $pid ne $$ && $cmd;
-        }
-        my @pids = $exact ? grep { $map{$_} =~ m/^\Q$name\E$/  } keys %map 
-                          : grep { $map{$_} =~ m/\Q$name\E/  } keys %map;
+sub get_ps_path {
+    return $_[0]->{'ps_path'};
+}
 
-        return wantarray ? @pids : $pids[0];
-    }
+sub get_errstr {
+    return $_[0]->{'errstr'};
+}
 
-    sub kill {
-        my($self, $pid) = @_;
-        $pid = int $pid;
-        # kill 0, $pid : may be false but still running, see `perldoc -f kill`
-        if( $self->is_pid_running($pid) ) {
-            # RC from kill is not a boolean of if the PID was killed or not, only that it was signaled
-            # so it is not an indicator of "success" in killing $pid
-            kill(15, $pid); # TERM
-            kill(2, $pid);  # INT
-            kill(1, $pid);  # HUP
-            kill(9, $pid);  # KILL
-            return if $self->is_pid_running($pid);
-        }   
-        return 1; 
-    }
+sub non_blocking_wait {
+    my ($self) = @_;
+    while ( ( my $zombie = waitpid( -1, 1 ) ) > 0 ) { }
+}
 
-    sub pid_file {
-        my($self, $pid_file, $newpid) = @_;
-        eval 'END { unlink $pid_file; }';
-        return $self->pid_file_no_unlink($pid_file, $newpid);
-    }
-
-    sub pid_file_no_unlink {
-        my($self, $pid_file, $newpid) = @_;
-        $newpid = $$ if !$newpid;
-       
-        if(-e $pid_file) {
-            open my $oldpid_fh, '<', $pid_file or return 0;
-            chomp(my $curpid = <$oldpid_fh>);
-            close $oldpid_fh;
-            return 1 if int $curpid == $$ && $newpid == $$; # already setup
-            return if   int $curpid == $$; # can't change it while $$ is alive
-            return if $self->is_pid_running(int $curpid); 
-        }
-        
-        open my $pid_fh, '>', $pid_file or return 0;
-        print {$pid_fh} int $newpid;
-        close $pid_fh;
-
+sub set_ps_path {
+    my ( $self, $path ) = @_;
+    $path = substr( $path, 0, ( length($path) - 1 ) )
+      if substr( $path, -1, 1 ) eq '/';
+    if ( ( -d $path && -x "$path/ps" ) || $path eq '' ) {
+        $self->{'ps_path'} = $path;
         return 1;
     }
-
-    sub kill_pid_file {
-        my($self, $pidfile) = @_;
-        my $rc = $self->kill_pid_file_no_unlink($pidfile);
-        if($rc && -e $pidfile) {
-            unlink $pidfile or return -1;
-        }
-        return $rc;
-    }
-
-    sub kill_pid_file_no_unlink {
-        my($self, $pidfile) = @_;
-        if(-e $pidfile) {
-            open my $pid_fh, '<', $pidfile or return 0;
-            chomp(my $pid = <$pid_fh>);
-            close $pid_fh;
-            $self->kill($pid) or return;
-            return $pid;
-        }
-        return 1;
-    }
-
-    sub is_running {
-        my($self, $check_this, $exact) = @_;
-        return $self->is_pid_running($check_this) if $check_this =~ m{ \A d+ \z }xms;
-        return $self->is_command_running($check_this, $exact);
-    }
-
-    sub pid_info {
-	    my ($self, $pid) = @_;
-	    my @outp = $self->_pid_info_raw( $pid );
-	    return wantarray ? split(/\s+/, $outp[1], 11) : [ split(/\s+/, $outp[1], 11) ];    
-    }
-
-    sub pid_info_hash {
-	    my ($self, $pid) = @_;
-	    my @outp = $self->_pid_info_raw( $pid );
-	    my %info;
-	    @info{ split(/\s+/, $outp[0], 11) } = split(/\s+/, $outp[1], 11);
-	    return wantarray ? %info : \%info;
-    }
-
-    sub _pid_info_raw {
-	    my ($self, $pid) = @_;
-	    my @info = $self->_raw_ps('u', '-p', $pid);
-	    chomp @info;
-	    return wantarray ? @info : \@info;
-    }
-
-    sub is_pid_running {
-        my($self, $check_pid) = @_;
-        my $info = ($self->_pid_info_raw($check_pid) )[1];
-        return 1 if defined $info;
+    else {
         return;
     }
+}
 
-    sub is_command_running {
-        my($self, $check_command, $exact) = @_;
-        return scalar $self->get_pidof($check_command, $exact) ? 1 : 0;
+sub get_pidof {
+    my ( $self, $name, $exact ) = @_;
+    my %map;
+    for ( $self->_raw_ps( 'axo', 'pid,command' ) ) {
+        $_ =~ s{ \A \s* | \s* \z }{}xmsg;
+        my ( $pid, $cmd ) = $_ =~ m{ \A (\d+) \s+ (.*) \z }xmsg;
+        $map{$pid} = $cmd if $pid && $pid ne $$ && $cmd;
+    }
+    my @pids =
+      $exact
+      ? grep { $map{$_} =~ m/^\Q$name\E$/ } keys %map
+      : grep { $map{$_} =~ m/\Q$name\E/ } keys %map;
+
+    return wantarray ? @pids : $pids[0];
+}
+
+sub kill {
+    my ( $self, $pid ) = @_;
+    $pid = int $pid;
+
+    # kill 0, $pid : may be false but still running, see `perldoc -f kill`
+    if ( $self->is_pid_running($pid) ) {
+
+        # RC from kill is not a boolean of if the PID was killed or not, only that it was signaled
+        # so it is not an indicator of "success" in killing $pid
+        kill( 15, $pid );    # TERM
+        kill( 2,  $pid );    # INT
+        kill( 1,  $pid );    # HUP
+        kill( 9,  $pid );    # KILL
+        return if $self->is_pid_running($pid);
+    }
+    return 1;
+}
+
+sub pid_file {
+    my ( $self, $pid_file, $newpid, $retry_conf ) = @_;
+    eval 'END { unlink $pid_file; }';
+    return $self->pid_file_no_unlink( $pid_file, $newpid, $retry_conf );
+}
+
+sub pid_file_no_unlink {
+    my ( $self, $pid_file, $newpid, $retry_conf ) = @_;
+    $newpid = $$ if !$newpid;
+
+    if ( ref($retry_conf) eq 'ARRAY' ) {
+        $retry_conf->[0] = int( abs( $retry_conf->[0] ) );
+        for my $idx ( 1 .. scalar( @{$retry_conf} ) - 1 ) {
+            next if ref $retry_conf->[$idx] eq 'CODE';
+            $retry_conf->[$idx] = int( abs( $retry_conf->[$idx] ) );
+        }
+    }
+    else {
+        $retry_conf = [ 3, 1, 2 ];
     }
 
-    sub wait_for_pidsof {
-        my ($self, $wait_ref) = @_;
+    my $passes = 0;
+    require Fcntl;
 
-        $wait_ref->{'get_pidof'} = $self->get_command($$) if !$wait_ref->{'get_pidof'}; 
-        $wait_ref->{'max_loops'} = 5  if !defined $wait_ref->{'max_loops'}
-                                   || $wait_ref->{'max_loops'} !~ m{ \A \d+ \z }xms;
+  EXISTS:
+    $passes++;
+    if ( -e $pid_file ) {
 
-        $wait_ref->{'hit_max_loops'} = sub {
-            die 'Hit max loops in wait_for_pidsof()';            
-        } if ref $wait_ref->{'hit_max_loops'} ne 'CODE';
- 
-        my @got_pids;
-        if( ref $wait_ref->{'pid_list'} eq 'ARRAY' ) {
-            @got_pids = grep { defined } map { $self->is_pid_running($_) ? $_ : undef } @{ $wait_ref->{'pid_list'} };    
+        open my $oldpid_fh, '<', $pid_file or return 0;
+        chomp( my $curpid = <$oldpid_fh> );
+        close $oldpid_fh;
+
+        # TODO: narrow even more the race condition where $curpid stops running and a new PID is put in
+        # the file between when we pull in $curpid above and check to see if it is running/unlink below
+
+        return 1 if int $curpid == $$ && $newpid == $$;    # already setup
+        return if int $curpid == $$;                       # can't change it while $$ is alive
+        return if $self->is_pid_running( int $curpid );
+
+        unlink $pid_file;                                  # must be a stale PID file, so try to remove it for sysopen()
+    }
+
+    # write only if it does not exist:
+    sysopen( my $pid_fh, $pid_file, Fcntl::O_WRONLY() | Fcntl::O_EXCL() | Fcntl::O_CREAT() ) || do {
+        return 0 if $passes >= $retry_conf->[0];
+        if ( ref( $retry_conf->[$passes] ) eq 'CODE' ) {
+            $retry_conf->[$passes]->( $self, $pid_file, $passes );
+        }
+        else {
+            sleep( $retry_conf->[$passes] ) if $retry_conf->[$passes];
+        }
+        goto EXISTS;
+    };
+
+    print {$pid_fh} int( abs($newpid) );
+    close $pid_fh;
+
+    return 1;
+}
+
+sub kill_pid_file {
+    my ( $self, $pidfile ) = @_;
+    my $rc = $self->kill_pid_file_no_unlink($pidfile);
+    if ( $rc && -e $pidfile ) {
+        unlink $pidfile or return -1;
+    }
+    return $rc;
+}
+
+sub kill_pid_file_no_unlink {
+    my ( $self, $pidfile ) = @_;
+    if ( -e $pidfile ) {
+        open my $pid_fh, '<', $pidfile or return 0;
+        chomp( my $pid = <$pid_fh> );
+        close $pid_fh;
+        $self->kill($pid) or return;
+        return $pid;
+    }
+    return 1;
+}
+
+sub is_running {
+    my ( $self, $check_this, $exact ) = @_;
+    return $self->is_pid_running($check_this) if $check_this =~ m{ \A d+ \z }xms;
+    return $self->is_command_running( $check_this, $exact );
+}
+
+sub pid_info {
+    my ( $self, $pid ) = @_;
+    my @outp = $self->_pid_info_raw($pid);
+    return wantarray ? split( /\s+/, $outp[1], 11 ) : [ split( /\s+/, $outp[1], 11 ) ];
+}
+
+sub pid_info_hash {
+    my ( $self, $pid ) = @_;
+    my @outp = $self->_pid_info_raw($pid);
+    my %info;
+    @info{ split( /\s+/, $outp[0], 11 ) } = split( /\s+/, $outp[1], 11 );
+    return wantarray ? %info : \%info;
+}
+
+sub _pid_info_raw {
+    my ( $self, $pid ) = @_;
+    my @info = $self->_raw_ps( 'u', '-p', $pid );
+    chomp @info;
+    return wantarray ? @info : \@info;
+}
+
+sub is_pid_running {
+    my ( $self, $check_pid ) = @_;
+    my $info = ( $self->_pid_info_raw($check_pid) )[1];
+    return 1 if defined $info;
+    return;
+}
+
+sub is_command_running {
+    my ( $self, $check_command, $exact ) = @_;
+    return scalar $self->get_pidof( $check_command, $exact ) ? 1 : 0;
+}
+
+sub wait_for_pidsof {
+    my ( $self, $wait_ref ) = @_;
+
+    $wait_ref->{'get_pidof'} = $self->get_command($$) if !$wait_ref->{'get_pidof'};
+    $wait_ref->{'max_loops'} = 5
+      if !defined $wait_ref->{'max_loops'}
+          || $wait_ref->{'max_loops'} !~ m{ \A \d+ \z }xms;
+
+    $wait_ref->{'hit_max_loops'} = sub {
+        die 'Hit max loops in wait_for_pidsof()';
+      }
+      if ref $wait_ref->{'hit_max_loops'} ne 'CODE';
+
+    my @got_pids;
+    if ( ref $wait_ref->{'pid_list'} eq 'ARRAY' ) {
+        @got_pids = grep { defined } map { $self->is_pid_running($_) ? $_ : undef } @{ $wait_ref->{'pid_list'} };
+    }
+    else {
+        @got_pids = $self->get_pidof( $wait_ref->{'get_pidof'} );
+    }
+
+    if ( $wait_ref->{'use_hires_usleep'} || $wait_ref->{'use_hires_nanosleep'} ) {
+        require Time::HiRes;
+    }
+
+    my $lcy = '';
+    my $fib = '';
+    if ( ref $wait_ref->{'sleep_for'} ) {
+        if ( ref $wait_ref->{'sleep_for'} eq 'ARRAY' ) {
+            require List::Cycle;
+            $lcy = List::Cycle->new( { 'values' => $wait_ref->{'sleep_for'} } );
+        }
+        if ( $wait_ref->{'sleep_for'} eq 'HASH' ) {
+            if ( exists $wait_ref->{'sleep_for'}->{'fibonacci'} ) {
+                require Math::Fibonacci::Phi;
+                $fib = 1;
+            }
+        }
+    }
+    $wait_ref->{'sleep_for'} = 60 if !defined $wait_ref->{'sleep_for'};
+
+    my $loop_cnt = 0;
+
+    while ( scalar @got_pids ) {
+        $loop_cnt++;
+
+        $wait_ref->{'pre_sleep'}->( $loop_cnt, \@got_pids )
+          if ref $wait_ref->{'pre_sleep'} eq 'CODE';
+
+        my $period =
+            $lcy ? $lcy->next()
+          : $fib ? Math::Fibonacci::term($loop_cnt)
+          :        $wait_ref->{'sleep_for'};
+
+        if ( $wait_ref->{'use_hires_nanosleep'} ) {
+            Time::HiRes::nanosleep($period);
+        }
+        elsif ( $wait_ref->{'use_hires_usleep'} ) {
+            Time::HiRes::usleep($period);
+        }
+        else {
+            sleep $period;
+        }
+
+        if ( ref $wait_ref->{'pid_list'} eq 'ARRAY' ) {
+            @got_pids = grep { defined } map { $self->is_pid_running($_) ? $_ : undef } @{ $wait_ref->{'pid_list'} };
         }
         else {
             @got_pids = $self->get_pidof( $wait_ref->{'get_pidof'} );
         }
 
-        if( $wait_ref->{'use_hires_usleep'} || $wait_ref->{'use_hires_nanosleep'} ) {
-            require Time::HiRes;
+        if ( $loop_cnt >= $wait_ref->{'max_loops'} ) {
+            $wait_ref->{'hit_max_loops'}->( $loop_cnt, \@got_pids );
+            last;
         }
-        
-        my $lcy = '';
-        my $fib = '';
-        if( ref $wait_ref->{'sleep_for'} ) {
-            if( ref $wait_ref->{'sleep_for'} eq 'ARRAY' ) {
-                require List::Cycle;
-                $lcy = List::Cycle->new({ 'values' => $wait_ref->{'sleep_for'} });
-            }
-            if( $wait_ref->{'sleep_for'} eq 'HASH' ) {
-                if( exists $wait_ref->{'sleep_for'}->{'fibonacci'} ) {
-                    require Math::Fibonacci::Phi;
-                    $fib = 1;
-                }
-            }
-        }
-        $wait_ref->{'sleep_for'} = 60 if !defined $wait_ref->{'sleep_for'};
-                
-        my $loop_cnt = 0;
-       
-        while(scalar @got_pids) {
-            $loop_cnt++;
+    }
+}
 
-            $wait_ref->{'pre_sleep'}->( $loop_cnt, \@got_pids ) 
-                if ref $wait_ref->{'pre_sleep'} eq 'CODE';
+sub _raw_ps {
+    my ( $self, @ps_args ) = @_;
+    my $path = $self->get_ps_path();
+    $self->{'errstr'} = '';
 
-            my $period = $lcy   ? $lcy->next()
-                         : $fib ? Math::Fibonacci::term( $loop_cnt )
-                         :        $wait_ref->{'sleep_for'}
-                         ; 
-            
-            if( $wait_ref->{'use_hires_nanosleep'} ) {
-                Time::HiRes::nanosleep( $period );                
-            }
-            elsif( $wait_ref->{'use_hires_usleep'} ) {
-                Time::HiRes::usleep( $period );
-            } 
-            else {
-                sleep $period;
-            }
-            
-            if( ref $wait_ref->{'pid_list'} eq 'ARRAY' ) {
-                @got_pids = grep { defined } map { $self->is_pid_running($_) ? $_ : undef } @{ $wait_ref->{'pid_list'} };    
-            }
-            else {
-                @got_pids = $self->get_pidof( $wait_ref->{'get_pidof'} );
-            }
-            
-            if( $loop_cnt >= $wait_ref->{'max_loops'} ) {
-                $wait_ref->{'hit_max_loops'}->( $loop_cnt, \@got_pids );
+    if ( !$path ) {
+        for (
+            qw( /usr/local/bin /usr/local/sbin
+            /usr/bin /usr/sbin
+            /bin      /sbin
+            )
+          ) {
+            if ( -x "$_/ps" ) {
+                $self->set_ps_path($_);
+                $path = $self->get_ps_path();
                 last;
             }
         }
     }
 
-    sub _raw_ps {
-        my($self, @ps_args) = @_;
-        my $path = $self->get_ps_path();
-        $errstr{ ident $self } = '';
+    my $ps = $path ? "$path/ps" : 'ps';
+    local $SIG{'CHLD'} = 'IGNORE';
+    my $pid = open3( my $in_fh, my $out_fh, my $err_fh, $ps, @ps_args );
+    my @out = <$out_fh>;
+    $self->{'errstr'} = join '', <$err_fh> if defined $err_fh;
+    close $in_fh;
+    close $out_fh;
+    close $err_fh if defined $err_fh;
+    waitpid( $pid, 0 );
 
-        if(!$path) {
-            for( qw( /bin      /sbin          /usr/bin 
-                     /usr/sbin /usr/local/bin /usr/local/sbin) ) {
-                if(-x "$_/ps") {
-                    $self->set_ps_path($_);
-                    $path = $self->get_ps_path();
-                    last;
-                }
-            }
-        }
+    return wantarray ? @out : join '', @out;
+}
 
-        my $ps = $path ? "$path/ps" : 'ps';
-        local $SIG{'CHLD'} = 'IGNORE';
-        my $pid = open3(my $in_fh, my $out_fh, my $err_fh, $ps, @ps_args);
-        my @out = <$out_fh>;
-        $errstr{ ident $self } = join '', <$err_fh> if defined $err_fh; 
-        close $in_fh;
-        close $out_fh;
-        close $err_fh if defined $err_fh;
+sub AUTOLOAD {
+    my ( $self, $pid ) = @_;
 
-        return wantarray ? @out : join '', @out;
-    }
+    my $subname = $AUTOLOAD . '=';
+    $subname =~ s/.*:://;
+    $subname =~ s{\A get\_ }{}xms;
 
-    sub AUTOMETHOD {
-        my($self, $ident, $pid) = @_;
-
-        my $subname = $_ . '=';
-        $subname =~ s{\A get\_ }{}xms;
-
-        my $data = $self->_raw_ps('-p', $pid, '-o', $subname);
-        $data    =~ s{ \A \s* | \s* \z }{}xmsg;
-        return sub { return $data };
-    }
-} 
+    my $data = $self->_raw_ps( '-p', $pid, '-o', $subname );
+    $data =~ s{ \A \s* | \s* \z }{}xmsg;
+    return $data;
+}
 
 1;
 
@@ -387,7 +450,7 @@ If the second argument is true it acts just like get_pidof()
 
 =head2 $pid->pid_file()
 
-Takes two arguments, the first is the pid file, the second, optional, argument is the pid to write to the file: defaults to $$.
+Takes three arguments, the first is the pid file, the second, optional, argument is the pid to write to the file (defaults to $$), the third, also optional, argument is "retry" configuration described below.
 
 If the pidfile exists it checks to see if the pid in it is running and if so it returns undef, if not it writes the second argument (or $$) to the file and returns 1.
 
@@ -397,6 +460,12 @@ It returns 0 if the pid file read or write open() fails. (IE you could use $! in
     Unix::PID->new()->pid_file('/var/run/this.pid') or die 'This is already running';
 
 Also sets up and END block to remove file.
+
+The "retry" configuration mentioned above is a reference to an array. The first item is the number of times to "retry" processing of an existing pid file. The additonal arguments are what to do after each pass (except the last pass which returns false afterward). The index corresponds to the pass number. e.g. $ar->[1] is what to do after the first pass, $ar->[2] is what to do after the second pass, and so on.
+
+The value can be a number, in which case it sleep()s that many seconds, or a code ref. The code ref is passed the Unix::PID object as thre first argument, pid file in question as the second argument and the number of passes thus far as the third.
+
+The default "retry" configuration is [3,1,2].
 
 =head2 $pid->pid_file_no_unlink()
 
