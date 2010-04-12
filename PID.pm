@@ -2,7 +2,7 @@ package Unix::PID;
 
 use strict;
 use warnings;
-our $VERSION = '0.16';
+our $VERSION = '0.17';
 our $AUTOLOAD;
 
 use IPC::Open3;
@@ -106,8 +106,16 @@ sub kill {
 
 sub pid_file {
     my ( $self, $pid_file, $newpid, $retry_conf ) = @_;
-    eval 'END { unlink $pid_file; }';
-    return $self->pid_file_no_unlink( $pid_file, $newpid, $retry_conf );
+    $newpid = $$ if !$newpid;
+
+    my $rc = $self->pid_file_no_unlink( $pid_file, $newpid, $retry_conf );
+    if ($rc && $newpid == $$) {
+        eval 'END { unlink $pid_file; }';
+    }
+
+    return 1 if $rc == 1;
+    return 0 if $rc == 0;
+    return;
 }
 
 sub pid_file_no_unlink {
@@ -459,7 +467,7 @@ It returns 0 if the pid file read or write open() fails. (IE you could use $! in
     # make sure this only runs one at a time 
     Unix::PID->new()->pid_file('/var/run/this.pid') or die 'This is already running';
 
-Also sets up and END block to remove file.
+Upon success it also sets up and END block to remove the file if the PID we setup was our PID.
 
 The "retry" configuration mentioned above is a reference to an array. The first item is the number of times to "retry" processing of an existing pid file. The additonal arguments are what to do after each pass (except the last pass which returns false afterward). The index corresponds to the pass number. e.g. $ar->[1] is what to do after the first pass, $ar->[2] is what to do after the second pass, and so on.
 

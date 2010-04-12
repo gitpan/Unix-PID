@@ -59,3 +59,7 @@ Revision history for Perl extension Unix::PID.
     - remove Class::Std dependency
     - perltidy
     - added missing waitpid() after open3()
+
+0.17  on Apr 12 12:22:59 CDT 2010
+    - only do END block pid file removal if we successfully setup file for our PID (thanks GWADEJ)
+
