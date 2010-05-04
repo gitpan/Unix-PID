@@ -63,3 +63,7 @@ Revision history for Perl extension Unix::PID.
 0.17  on Apr 12 12:22:59 CDT 2010
     - only do END block pid file removal if we successfully setup file for our PID (thanks GWADEJ)
 
+0.18  Tue May  4 23:06:31 2010
+    - Happy Star Wars day, May the 4th be with you!
+    - rt 57199 TODOs: added get_pid_from_pidfile() and is_pidfile_running()
+    - POD comment clarification, typo fix

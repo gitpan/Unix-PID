@@ -2,7 +2,7 @@ package Unix::PID;
 
 use strict;
 use warnings;
-our $VERSION = '0.17';
+our $VERSION = '0.18';
 our $AUTOLOAD;
 
 use IPC::Open3;
@@ -104,6 +104,25 @@ sub kill {
     return 1;
 }
 
+sub get_pid_from_pidfile {
+    my ( $self, $pid_file ) = @_;
+    
+    return 0 if !-e $pid_file;
+    
+    open my $pid_fh, '<', $pid_file or return;
+    chomp( my $pid = <$pid_fh> );
+    close $pid_fh;
+    
+    return int(abs($pid));
+}
+
+sub is_pidfile_running {
+    my ( $self, $pid_file ) = @_;
+    my $pid = $self->get_pid_from_pidfile($pid_file) || return;
+    return $pid if $self->is_pid_running($pid);
+    return;
+}
+
 sub pid_file {
     my ( $self, $pid_file, $newpid, $retry_conf ) = @_;
     $newpid = $$ if !$newpid;
@@ -140,9 +159,7 @@ sub pid_file_no_unlink {
     $passes++;
     if ( -e $pid_file ) {
 
-        open my $oldpid_fh, '<', $pid_file or return 0;
-        chomp( my $curpid = <$oldpid_fh> );
-        close $oldpid_fh;
+        my $curpid = $self->get_pid_from_pidfile($pid_file);
 
         # TODO: narrow even more the race condition where $curpid stops running and a new PID is put in
         # the file between when we pull in $curpid above and check to see if it is running/unlink below
@@ -184,9 +201,7 @@ sub kill_pid_file {
 sub kill_pid_file_no_unlink {
     my ( $self, $pidfile ) = @_;
     if ( -e $pidfile ) {
-        open my $pid_fh, '<', $pidfile or return 0;
-        chomp( my $pid = <$pid_fh> );
-        close $pid_fh;
+        my $pid = $self->get_pid_from_pidfile($pidfile);
         $self->kill($pid) or return;
         return $pid;
     }
@@ -376,7 +391,7 @@ or simplify pid file use by:
 
    use Unix::PID '/var/run/this.pid';
 
-This is *exactly* the same as:
+Aside from the obvious run time vs. compile time factor, this is *exactly* the same as doing
 
    use Unix::PID;
    Unix::PID->new()->pid_file('/var/run/this.pid') or die 'The PID in /var/run/this.pid is still running.';
@@ -448,10 +463,16 @@ If the first argument is all digits then this it calls $pid->is_pid_running for 
         warn "PID $miscpid is running, you had better go catch it";
     } 
 
+=head3 $pid->is_pidfile_running()
+
+Takes one argument, the pid file whose PID you're interested in.
+
+Returns the numeric pid stored in the given pid file if it is running, otherwise it return;s
+
 =head3 $pid->is_command_running()
 
     if($pid->is_comand_running($cmd)) {
-        warn "$cmd is still goign strong";
+        warn "$cmd is still going strong";
     }
 
 If the second argument is true it acts just like get_pidof()
@@ -460,7 +481,7 @@ If the second argument is true it acts just like get_pidof()
 
 Takes three arguments, the first is the pid file, the second, optional, argument is the pid to write to the file (defaults to $$), the third, also optional, argument is "retry" configuration described below.
 
-If the pidfile exists it checks to see if the pid in it is running and if so it returns undef, if not it writes the second argument (or $$) to the file and returns 1.
+If the pid file exists it checks to see if the pid in it is running and if so it returns undef, if not it writes the second argument (or $$) to the file and returns 1.
 
 It returns 0 if the pid file read or write open() fails. (IE you could use $! in your "or whatever")
 
@@ -479,9 +500,15 @@ The default "retry" configuration is [3,1,2].
 
 Just like $pid->pid_file() except no END block cleanup is setup. Useful for doing pid files for a sporking daemon.
 
+=head2 $pid->get_pid_from_pidfile()
+
+Takes one argument, the pid file whose PID you want. 
+
+Returns the pid stored in the given pid file, 0 if the pid file does not exist or the contents are not numeric. return;s on failure to open the existing pid file.
+
 =head2 $pid->kill_pid_file()
 
-Takes one argument, the pidfile whose PID you want kill()ed. It unlinks the pidfile after its successful run.
+Takes one argument, the pid file whose PID you want kill()ed. It unlinks the pid file after its successful run.
 
 It returns true (if the file exists, the pid. otherwise 1) if all is well, 0 if it exists but could not be opened, undef if the pid could not be killed, and -1 if it could not be cleaned up after it was successfully killed.
 
