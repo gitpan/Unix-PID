@@ -2,7 +2,7 @@ package Unix::PID;
 
 use strict;
 use warnings;
-our $VERSION = '0.18';
+our $VERSION = '0.19';
 our $AUTOLOAD;
 
 use IPC::Open3;
@@ -35,6 +35,7 @@ sub new {
         {
             'ps_path' => '',
             'errstr'  => '',
+            'minimum_pid' => !exists $args_ref->{'minimum_pid'} || $args_ref->{'minimum_pid'} !~ m{\A\d+\z}ms ? 11 : $args_ref->{'minimum_pid'},
         },
         $class
     );
@@ -89,16 +90,24 @@ sub get_pidof {
 sub kill {
     my ( $self, $pid ) = @_;
     $pid = int $pid;
+    my $min = int $self->{'minimum_pid'};
+    if ( $pid < $min ) {
 
-    # kill 0, $pid : may be false but still running, see `perldoc -f kill`
+        # prevent bad args from killing the process group (IE '0')
+        # or general low level ones
+        warn "kill() called with integer value less than $min";
+        return;
+    }
+    
+    # CORE::kill 0, $pid : may be false but still running, see `perldoc -f kill`
     if ( $self->is_pid_running($pid) ) {
 
-        # RC from kill is not a boolean of if the PID was killed or not, only that it was signaled
+        # RC from CORE::kill is not a boolean of if the PID was killed or not, only that it was signaled
         # so it is not an indicator of "success" in killing $pid
-        kill( 15, $pid );    # TERM
-        kill( 2,  $pid );    # INT
-        kill( 1,  $pid );    # HUP
-        kill( 9,  $pid );    # KILL
+        CORE::kill( 15, $pid );    # TERM
+        CORE::kill( 2,  $pid );    # INT
+        CORE::kill( 1,  $pid );    # HUP
+        CORE::kill( 9,  $pid );    # KILL
         return if $self->is_pid_running($pid);
     }
     return 1;
@@ -237,6 +246,9 @@ sub _pid_info_raw {
 
 sub is_pid_running {
     my ( $self, $check_pid ) = @_;
+    return 1 if $> == 0 && CORE::kill(0, $check_pid); # if we are superuser we can avoid the the system call. For details see `perldoc -f kill`
+
+    # even if we are superuser, go ahead and call ps just in case CORE::kill 0's false RC was erroneous
     my $info = ( $self->_pid_info_raw($check_pid) )[1];
     return 1 if defined $info;
     return;
@@ -400,13 +412,31 @@ So the "use Unix::PID 'pidfile';" will simplify 99% of the times you'd use $pid-
 
 =head1 METHODS
 
+=head2 Unix::PID->new()
+
+Get a Unix::PID object. 
+
+It takes an optional hashref with the following, optional, keys:
+
+=over 4
+
+=item 'minimum_pid'
+
+The minimum PID that can be kill()ed. If not given or not all digits then it defaults to 11.
+
+=item 'ps_path'
+
+The path to the 'ps' binary you want to use. The value gets passed to the object's set_ps_path().
+
+=back
+
 =head2 $pid->set_ps_path()
 
-Set the path where ps is at. If not set here or in new() or previously then _raw_ps() looks for it in several common places and sets it to that if it finds it.
+Set the path where ps is at. If not set via this method or in new() or previously then _raw_ps() looks for it in several common places and sets it to that if it finds it.
 returns true if what you specify is ok and false otherwise.
 
     $pid->set_ps_path('/usr/util/bin');
- 
+
 =head2 $pid->get_ps_path()
 
 Get the path that the object thinks ps is at

@@ -1,6 +1,6 @@
 --- #YAML:1.0
 name:               Unix-PID
-version:            0.18
+version:            0.19
 abstract:           Perl extension for getting PID info.
 author:
     - Daniel Muey <http://drmuey.com/cpan_contact.pl>

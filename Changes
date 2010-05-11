@@ -67,3 +67,8 @@ Revision history for Perl extension Unix::PID.
     - Happy Star Wars day, May the 4th be with you!
     - rt 57199 TODOs: added get_pid_from_pidfile() and is_pidfile_running()
     - POD comment clarification, typo fix
+    
+0.19
+    Add 'minimum_pid' support
+    have is_pid_running use kill 0 instead of ps when we are root
+    Qualify kill() calls to CORE::kill() when appropriate
