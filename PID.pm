@@ -2,7 +2,7 @@ package Unix::PID;
 
 use strict;
 use warnings;
-our $VERSION = '0.19';
+our $VERSION = '0.20';
 our $AUTOLOAD;
 
 use IPC::Open3;
@@ -33,8 +33,8 @@ sub new {
     $args_ref = {} if ref($args_ref) ne 'HASH';
     my $self = bless(
         {
-            'ps_path' => '',
-            'errstr'  => '',
+            'ps_path'     => '',
+            'errstr'      => '',
             'minimum_pid' => !exists $args_ref->{'minimum_pid'} || $args_ref->{'minimum_pid'} !~ m{\A\d+\z}ms ? 11 : $args_ref->{'minimum_pid'},
         },
         $class
@@ -98,7 +98,7 @@ sub kill {
         warn "kill() called with integer value less than $min";
         return;
     }
-    
+
     # CORE::kill 0, $pid : may be false but still running, see `perldoc -f kill`
     if ( $self->is_pid_running($pid) ) {
 
@@ -115,14 +115,15 @@ sub kill {
 
 sub get_pid_from_pidfile {
     my ( $self, $pid_file ) = @_;
-    
+
+    # if this function is ever changed to use $self as a hash object, update pid_file() to not do a class method call
     return 0 if !-e $pid_file;
-    
+
     open my $pid_fh, '<', $pid_file or return;
     chomp( my $pid = <$pid_fh> );
     close $pid_fh;
-    
-    return int(abs($pid));
+
+    return int( abs($pid) );
 }
 
 sub is_pidfile_running {
@@ -137,8 +138,27 @@ sub pid_file {
     $newpid = $$ if !$newpid;
 
     my $rc = $self->pid_file_no_unlink( $pid_file, $newpid, $retry_conf );
-    if ($rc && $newpid == $$) {
-        eval 'END { unlink $pid_file; }';
+    if ( $rc && $newpid == $$ ) {
+
+        # prevent forked childrens' END from killing parent's pid files
+        #   'unlink_end_use_current_pid_only' is undocumented as this may change, feedback welcome!
+        #   'carp_unlink_end' undocumented as it is only meant for testing (rt57462, use Test::Carp to test END behavior)
+        if ( $self->{'unlink_end_use_current_pid_only'} ) {
+            eval 'END { unlink $pid_file if $$ eq ' . $$ . '}';
+            if ( $self->{'carp_unlink_end'} ) {
+
+                # eval 'END { require Carp;Carp::carp("[info] $$ !unlink $pid_file (current pid check)") if $$ ne ' . $$ . '}';
+                eval 'END { require Carp;Carp::carp("[info] $$ unlink $pid_file (current pid check)") if $$ eq ' . $$ . '}';
+            }
+        }
+        else {
+            eval 'END { unlink $pid_file if Unix::PID->get_pid_from_pidfile($pid_file) eq $$ }';
+            if ( $self->{'carp_unlink_end'} ) {
+
+                # eval 'END { require Carp;Carp::carp("[info] $$ !unlink $pid_file (pid file check)") if Unix::PID->get_pid_from_pidfile($pid_file) ne $$ }';
+                eval 'END { require Carp;Carp::carp("[info] $$ unlink $pid_file (pid file check)") if Unix::PID->get_pid_from_pidfile($pid_file) eq $$ }';
+            }
+        }
     }
 
     return 1 if $rc == 1;
@@ -246,7 +266,7 @@ sub _pid_info_raw {
 
 sub is_pid_running {
     my ( $self, $check_pid ) = @_;
-    return 1 if $> == 0 && CORE::kill(0, $check_pid); # if we are superuser we can avoid the the system call. For details see `perldoc -f kill`
+    return 1 if $> == 0 && CORE::kill( 0, $check_pid );    # if we are superuser we can avoid the the system call. For details see `perldoc -f kill`
 
     # even if we are superuser, go ahead and call ps just in case CORE::kill 0's false RC was erroneous
     my $info = ( $self->_pid_info_raw($check_pid) )[1];
