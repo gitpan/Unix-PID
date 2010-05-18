@@ -2,6 +2,7 @@ Changes
 Makefile.PL
 MANIFEST
 PID.pm
+PID.pod
 README
 t/1.t
 META.yml                                Module meta-data (added by MakeMaker)

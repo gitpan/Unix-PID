@@ -1,5 +1,12 @@
 Revision history for Perl extension Unix::PID.
 
+0.21  Tue May 18 10:31:47 2010
+    - make open3 error handle a glob ref so it is not duped into the read handle (duh!)
+    - Memory pedantic system fixups:
+       - make use of open3 optional
+       - comment out strict and warnings (should still run under them)
+       - put POD in different file (doesn't really gain anything, mainly for easing worried minds)
+  
 0.20  Thu May 13 08:03:15 2010
     - pidfile END block only unlink if PID in file is $$ (so fork()s won't bork a process not their own via END copy)
     - start doing changelog top down

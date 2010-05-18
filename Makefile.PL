@@ -10,6 +10,6 @@ WriteMakefile(
                              'Fcntl'                => 0,
                          },
     ($] >= 5.005 ?    
-      (ABSTRACT_FROM  => 'PID.pm',
+      (ABSTRACT_FROM  => 'PID.pod',
        AUTHOR         => 'Daniel Muey <http://drmuey.com/cpan_contact.pl>') : ()),
 );
