@@ -3,7 +3,7 @@ package Unix::PID;
 # this works with these uncommented, but we leave them commented out to avoid a little time and memory
 # use strict;
 # use warnings;
-$Unix::PID::VERSION = '0.21';
+$Unix::PID::VERSION = '0.22';
 
 sub import {
     shift;
@@ -162,7 +162,7 @@ sub pid_file {
     }
 
     return 1 if $rc == 1;
-    return 0 if $rc == 0;
+    return 0 if defined $rc && $rc == 0;
     return;
 }
 
@@ -239,7 +239,7 @@ sub kill_pid_file_no_unlink {
 
 sub is_running {
     my ( $self, $check_this, $exact ) = @_;
-    return $self->is_pid_running($check_this) if $check_this =~ m{ \A d+ \z }xms;
+    return $self->is_pid_running($check_this) if $check_this =~ m{ \A \d+ \z }xms;
     return $self->is_command_running( $check_this, $exact );
 }
 
@@ -266,8 +266,14 @@ sub _pid_info_raw {
 
 sub is_pid_running {
     my ( $self, $check_pid ) = @_;
+    $check_pid = int($check_pid);
+    return if !$check_pid;
+    
     return 1 if $> == 0 && CORE::kill( 0, $check_pid );    # if we are superuser we can avoid the the system call. For details see `perldoc -f kill`
 
+    # If the proc filesystem is available, it's a good test. If not, continue on to system call
+    return 1 if -e "/proc/$$" && -r "/proc/$$" && -r "/proc/$check_pid";
+    
     # even if we are superuser, go ahead and call ps just in case CORE::kill 0's false RC was erroneous
     my $info = ( $self->_pid_info_raw($check_pid) )[1];
     return 1 if defined $info;
