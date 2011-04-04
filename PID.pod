@@ -166,7 +166,9 @@ Just like $pid->kill_pid_file() but the pid file is not unlink()ed. (and it like
 
 =head2 $pid->kill()
 
-Takes one argument, the PID to kill. If its running it first tries kill 1 and if that fails it tries kill 9.
+Takes one mandatory argumentL the PID to kill, and one option argument: the seconds to wait for kill() to finish before we check for the PID. 
+
+If its running it first tries kill 1 and if that fails it tries kill 9.
 
 Returns undef if the PID was running and could not be killed, true if its not running or was killed successfully.
 

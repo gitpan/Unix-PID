@@ -1,6 +1,6 @@
 --- #YAML:1.0
 name:                Unix-PID
-version:             0.22
+version:             0.23
 abstract:            Perl extension for getting PID info.
 license:             ~
 author:              

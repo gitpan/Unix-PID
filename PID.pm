@@ -3,7 +3,7 @@ package Unix::PID;
 # this works with these uncommented, but we leave them commented out to avoid a little time and memory
 # use strict;
 # use warnings;
-$Unix::PID::VERSION = '0.22';
+$Unix::PID::VERSION = '0.23';
 
 sub import {
     shift;
@@ -88,7 +88,8 @@ sub get_pidof {
 }
 
 sub kill {
-    my ( $self, $pid ) = @_;
+    my ( $self, $pid, $give_kill_a_chance ) = @_;
+    $give_kill_a_chance = int $give_kill_a_chance;
     $pid = int $pid;
     my $min = int $self->{'minimum_pid'};
     if ( $pid < $min ) {
@@ -108,6 +109,11 @@ sub kill {
         CORE::kill( 2,  $pid );    # INT
         CORE::kill( 1,  $pid );    # HUP
         CORE::kill( 9,  $pid );    # KILL
+        
+        # give kill() some time to take effect?
+        if ($give_kill_a_chance) {
+            sleep($give_kill_a_chance);
+        }
         return if $self->is_pid_running($pid);
     }
     return 1;

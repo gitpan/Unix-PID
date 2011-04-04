@@ -1,5 +1,8 @@
 Revision history for Perl extension Unix::PID.
 
+0.23  Mon Apr  4 16:01:10  2011
+    - option to wait  between kill and re-check
+    
 0.22  Fri Dec 24 11:07:12  2010
     - rt 64190: fix broken regex, thanks mcartmell!
     - rt 59366: fix return value logic, thanks galumph!
